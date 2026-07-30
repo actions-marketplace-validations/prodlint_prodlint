@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm run build        # tsup → dist/cli.js, dist/mcp.js, dist/index.js
 npm run dev          # tsup --watch
-npm run test         # vitest run (562+ tests)
+npm run test         # vitest run (618 tests)
 npm run test:watch   # vitest
 npm run lint         # self-scan via node dist/cli.js .
 ```
@@ -107,12 +107,20 @@ Overall = **weighted** average: security 40%, reliability 30%, performance 15%, 
 
 ### Finding Interface (v0.5.0)
 
-`Finding` now has an optional `fix?: string` field for actionable remediation hints. New rules include fix suggestions.
+`Finding` has an optional `fix?: string` field for actionable remediation hints. All 52 rules include fix suggestions (v0.9.1).
 
-### CLI Flags (v0.5.0)
+### CLI Flags
 
+- `--json` — Output results as JSON (ScanResult object)
+- `--sarif` — Output results as SARIF 2.1.0 (for GitHub Code Scanning)
+- `--summary` — Quick pass/fail verdict with top 3 critical/warning findings
 - `--min-severity <level>` — Filter findings to only show critical, warning, or info and above
+- `--profile <name>` — Preset: `startup` (criticals only), `balanced` (warnings+), `strict` (all including info)
+- `--baseline <file>` — Only show findings not present in the baseline file
+- `--baseline-save <file>` — Save current findings as a baseline snapshot (for use with `--baseline`)
+- `--ignore <pattern>` — Glob patterns to ignore (repeatable)
 - `--quiet` — Suppress the README badge output
+- `--web` — Run site score scan (14 AI agent checks)
 
 ### Exit Codes
 
@@ -139,16 +147,22 @@ When bumping the version (`npm version patch/minor/major`), update ALL of these 
 1. `package.json` → `version` (handled by `npm version`)
 2. `server.json` → both `version` fields (top-level and inside `packages[0]`)
 3. `README.md` → terminal output example (`prodlint v0.x.x`)
+4. `tests/reporter.test.ts` → `makeResult()` fixture `version: '0.x.x'`
 
 **Website repo (prodlint-website):**
-4. `app/components/animated-terminal.tsx` → terminal animation line (`prodlint v0.x.x`)
-5. `app/layout.tsx` → JSON-LD `softwareVersion`
-6. `app/mcp/page.tsx` → JSON-LD `softwareVersion`
+5. `app/components/animated-terminal.tsx` → terminal animation line (`prodlint v0.x.x`)
+6. `app/layout.tsx` → JSON-LD `softwareVersion`
+7. `public/.well-known/agent-card.json` → `"version"` field
+8. `app/blog/data.ts` → sample `prodlint v0.x.x` output inside the AGENTS.md blog post
 
-**After updating all files:**
-- `npm run build && npm publish` (this repo)
-- `npm run build` (website repo, then push to deploy)
-- `./mcp-publisher.exe publish` (update MCP registry)
+Tip: sweep both repos with `grep -rn "<old-version>"` (excluding node_modules/dist/package-lock/CHANGELOG) to catch any stragglers. Note: `app/mcp/page.tsx` no longer carries a version string.
+
+**After updating all files, run these in order:**
+1. `npm run build && npm test` (verify everything passes)
+2. `npm publish` (publishes to npm, requires OTP)
+3. `git tag -f v1 && git push origin v1 --force` (update v1 tag so GitHub Action users get the new version)
+4. `./mcp-publisher.exe publish` (update MCP registry — requires `mcp-publisher.exe login github` if not already logged in)
+5. `npm run build` (website repo, then push to deploy)
 
 ### npm Package
 
