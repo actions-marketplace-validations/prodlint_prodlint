@@ -141,28 +141,50 @@ Composite action: installs Node 20, runs `npx prodlint --json`, parses JSON, pos
 
 ### Version Bump Checklist
 
-When bumping the version (`npm version patch/minor/major`), update ALL of these hardcoded version strings:
+A release in this repo is two commands:
 
-**This repo (prodlint):**
-1. `package.json` → `version` (handled by `npm version`)
-2. `server.json` → both `version` fields (top-level and inside `packages[0]`)
-3. `README.md` → terminal output example (`prodlint v0.x.x`)
-4. `tests/reporter.test.ts` → `makeResult()` fixture `version: '0.x.x'`
+```bash
+npm version patch    # or minor/major
+git push --follow-tags
+```
 
-**Website repo (prodlint-website):**
-5. `app/components/animated-terminal.tsx` → terminal animation line (`prodlint v0.x.x`)
-6. `app/layout.tsx` → JSON-LD `softwareVersion`
-7. `public/.well-known/agent-card.json` → `"version"` field
-8. `app/blog/data.ts` → sample `prodlint v0.x.x` output inside the AGENTS.md blog post
+`npm version` fires the `version` lifecycle hook, which runs `scripts/sync-versions.cjs`
+to propagate the new version into `server.json` (both fields),
+`packages/prodlint-mcp/package.json` (its `version` and its `^` range on `prodlint`),
+the `README.md` sample output, and the `tests/reporter.test.ts` fixture — then stages
+them into the version commit. The script **fails loudly** if a text anchor no longer
+matches exactly once, rather than silently skipping a file.
 
-Tip: sweep both repos with `grep -rn "<old-version>"` (excluding node_modules/dist/package-lock/CHANGELOG) to catch any stragglers. Note: `app/mcp/page.tsx` no longer carries a version string.
+Pushing the `vX.Y.Z` tag runs `.github/workflows/release.yml`, which verifies metadata,
+builds, tests, self-scans, publishes **both** `prodlint` and the `prodlint-mcp` launcher
+to npm with provenance, publishes to the **MCP registry**, then force-updates the
+rolling `v1` tag.
 
-**After updating all files, run these in order:**
-1. `npm run build && npm test` (verify everything passes)
-2. `npm publish` (publishes to npm, requires OTP)
-3. `git tag -f v1 && git push origin v1 --force` (update v1 tag so GitHub Action users get the new version)
-4. `./mcp-publisher.exe publish` (update MCP registry — requires `mcp-publisher.exe login github` if not already logged in)
-5. `npm run build` (website repo, then push to deploy)
+Every credential is OIDC — there is no `NPM_TOKEN` and no stored registry JWT:
+- **npm**: trusted publishing. Both `prodlint` and `prodlint-mcp` have
+  `prodlint/prodlint` + `release.yml` registered as a trusted publisher on npmjs.com.
+- **MCP registry**: `mcp-publisher login github-oidc`. The pinned publisher tarball is
+  SHA256-verified before it runs; bump `MCP_PUBLISHER_VERSION`/`MCP_PUBLISHER_SHA256`
+  together (get the digest from the release asset's `digest` field).
+
+**Still manual — the website repo only** (prodlint-website):
+`app/components/animated-terminal.tsx`, `app/layout.tsx` JSON-LD `softwareVersion`,
+`public/.well-known/agent-card.json` → `"version"`, and the sample output in
+`app/blog/data.ts`. Note: `app/mcp/page.tsx` no longer carries a version string.
+
+Tip: sweep the website repo with `grep -rn "<old-version>"` (excluding
+node_modules/dist/package-lock/CHANGELOG). `npm run verify:release` checks this repo's
+set at any time; CI runs it on every PR.
+
+**`master` branch protection requires a check named exactly `build`.** The CI matrix
+emits `build-and-test (18|20|22)`, so `ci.yml` carries a dependent aggregator job named
+`build` purely to satisfy it. Removing that job silently makes every PR unmergeable
+without an admin override.
+
+**Do not re-add `@rollup/rollup-win32-x64-msvc` as an explicit dependency.** It was a
+workaround for an `os=linux` line in the machine's global `~/.npmrc`, which made npm skip
+win32 native bindings on Windows. That line is gone; rollup declares all 26 platform
+bindings itself at its exact version, and pinning one separately reintroduces version skew.
 
 ### npm Package
 
